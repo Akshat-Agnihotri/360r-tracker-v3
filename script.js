@@ -1,236 +1,674 @@
-:root {
-    --bg: #0f172a;
-    --card: #111827;
-    --card-glass: rgba(17, 24, 39, 0.75);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-hover: rgba(255, 255, 255, 0.12);
-    --accent: #3b82f6;
-    --accent-glow: rgba(59, 130, 246, 0.25);
-    --success: #22c55e;
-    --success-glow: rgba(34, 197, 94, 0.2);
-    --failure: #ef4444;
-    --failure-glow: rgba(239, 68, 68, 0.2);
-    --text: #f8fafc;
-    --text-muted: #94a3b8;
-    --gold: #f59e0b;
-    --orange: #f97316;
-    --font: 'Plus Jakarta Sans', sans-serif;
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+// REPLACE Placeholder items below with your verified parameters from Firebase Console.
+const firebaseConfig = {
+    apiKey: "AIzaSyAwrpo_McpHunMm2bcIg4J6nJBnaOY95xE",
+    authDomain: "tracker-360r.firebaseapp.com",
+    databaseURL: "https://tracker-360r-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "tracker-360r",
+    storageBucket: "tracker-360r.firebasestorage.app",
+    messagingSenderId: "685195495220",
+    appId: "1:685195495220:web:78df407a6fe7915b8b8761",
+    measurementId: "G-FPM2D6FNYE"
+};
+
+// Resilient Cloud Core Engine Initialization
+let app, auth, database, googleProvider;
+let isCloudActive = false;
+
+try {
+    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        database = getDatabase(app);
+        googleProvider = new GoogleAuthProvider();
+        isCloudActive = true;
+    } else {
+        console.warn("360R Tracking System: Operating in local fallback infrastructure mode.");
+    }
+} catch (error) {
+    console.error("Firebase Configuration Initialization halted engine:", error);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font); -webkit-font-smoothing: antialiased; }
+document.addEventListener('DOMContentLoaded', () => {
+    const state = {
+        attendanceHistory: {}, 
+        todaySelection: { lecture: false, question: false, revision: false },
+        currentDateStr: "", 
+        charts: { bar: null, pie: null },
+        calendar: { month: 5, year: 2026 },
+        currentUser: null
+    };
 
-body {
-    background-color: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem 1.5rem; overflow-x: hidden;
-    background-image: radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.03) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(34, 197, 94, 0.02) 0%, transparent 50%);
-}
+    const motivationalQuotes = [
+        "Consistency beats intensity. Every single day counts.",
+        "One Present Day at a Time. Keep building the block.",
+        "Future IITians Show Up Daily. No excuses, no shortcuts.",
+        "Small daily wins create massive structural ranks.",
+        "The price of discipline is always less than the pain of regret."
+    ];
 
-.app-container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.75rem; }
+    const DOM = {
+        currentDate: document.getElementById('current-date'),
+        taskLectures: document.getElementById('task-lectures'),
+        taskQuestions: document.getElementById('task-questions'),
+        taskRevision: document.getElementById('task-revision'),
+        statusCard: document.getElementById('status-card'),
+        statusDisplay: document.getElementById('status-display'),
+        statusSubtext: document.getElementById('status-subtext'),
+        finalizeBtn: document.getElementById('finalize-btn'),
+        motivationQuote: document.getElementById('motivation-quote'),
+        currentStreak: document.getElementById('current-streak'),
+        longestStreak: document.getElementById('longest-streak'),
+        statPresentCount: document.getElementById('stat-present-count'),
+        statAbsentCount: document.getElementById('stat-absent-count'),
+        heatmapGrid: document.getElementById('heatmap-grid'),
+        toastContainer: document.getElementById('toast-container'),
+        barChartCanvas: document.getElementById('barChartMonthly'),
+        pieChartCanvas: document.getElementById('pieChartRatio'),
+        
+        // Modals Structure DOM Elements
+        calendarModal: document.getElementById('calendar-modal'),
+        calendarTrigger: document.getElementById('calendar-trigger'),
+        closeCalendarModal: document.getElementById('close-calendar-modal'),
+        calendarGrid: document.getElementById('calendar-grid-ui'),
+        calendarDetails: document.getElementById('calendar-details'),
+        calendarMonthLbl: document.getElementById('calendar-month'),
+        prevMonthBtn: document.getElementById('prev-month'),
+        nextMonthBtn: document.getElementById('next-month'),
+        
+        // Authentication Dialog Components
+        authModalTrigger: document.getElementById('auth-modal-trigger'),
+        authTriggerText: document.getElementById('auth-trigger-text'),
+        cloudIconIndicator: document.getElementById('cloud-icon-indicator'),
+        authModal: document.getElementById('auth-modal'),
+        closeAuthModal: document.getElementById('close-auth-modal'),
+        authLoggedOut: document.getElementById('auth-logged-out'),
+        authLoggedIn: document.getElementById('auth-logged-in'),
+        userDisplayEmail: document.getElementById('user-display-email'),
+        
+        // Updated Login/Signup Form Inputs
+        loginEmailInput: document.getElementById('auth-email'),
+        loginPasswordInput: document.getElementById('auth-password'),
+        btnLogin: document.getElementById('btn-login'),
+        
+        signupEmailInput: document.getElementById('auth-email-signup'),
+        signupPasswordInput: document.getElementById('auth-password-signup'),
+        signupConfirmInput: document.getElementById('auth-confirm-password'),
+        btnRegister: document.getElementById('btn-register'),
+        
+        btnGoogle: document.getElementById('btn-google'),
+        btnLogout: document.getElementById('btn-logout')
+    };
 
-.glass { background: var(--card-glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
-.glass:hover { border-color: var(--border-hover); }
+    function init() {
+        setupDateEngine();
+        loadLocalStorageData(); 
+        bindInputEventListeners();
+        setupInteractiveModalPanels();
+        
+        if (isCloudActive) {
+            bindAuthEventListeners();
+            setupFirebaseObserver();
+        } else {
+            DOM.authModalTrigger.onclick = () => {
+                showToastMessage("Firebase parameters missing! Please update your keys in script.js.");
+            };
+        }
 
-/* HEADER ELEMENTS */
-.app-header { padding: 0.5rem 0; }
-.header-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-.logo-area { display: flex; align-items: center; gap: 0.85rem; position: relative; }
-.logo-glow { position: absolute; width: 40px; height: 40px; background: var(--accent); filter: blur(20px); opacity: 0.3; pointer-events: none; }
-.logo-icon { font-size: 1.75rem; color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); }
-.logo-area h1 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(to right, #fff, #cbd5e1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.subtitle { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-top: 0.05rem; }
-.header-actions { display: flex; align-items: center; gap: 0.75rem; }
+        evaluateTodayStatus();
+        calculateMetricsAndStreaks();
+        renderHeatmapGraph();
+        renderAnalyticsCharts();
+        displayDailyQuote();
+        checkMidnightRollover();
+        setupHeatmapTooltips();
+    }
 
-.date-card { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.9rem; border-radius: 10px; font-size: 0.825rem; font-weight: 600; color: #e2e8f0; }
-.text-accent { color: var(--accent); }
+    function setupDateEngine() {
+        const now = new Date();
+        const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+        DOM.currentDate.textContent = now.toLocaleDateString('en-US', options);
+        state.currentDateStr = formatDateToISO(now);
+        state.calendar.month = now.getMonth();
+        state.calendar.year = now.getFullYear();
+    }
 
-/* MAIN CORE LAYOUT */
-.main-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 1.5rem; align-items: start; }
-.workspace-column { display: flex; flex-direction: column; gap: 1.25rem; }
+    function loadLocalStorageData() {
+        const savedHistory = localStorage.getItem('360R_attendanceHistory');
+        if (savedHistory) { 
+            try { 
+                state.attendanceHistory = JSON.parse(savedHistory); 
+                migrateOldSchemaData();
+            } catch(e) { state.attendanceHistory = {}; } 
+        }
+        
+        const savedTasks = localStorage.getItem('360R_todayTasks');
+        const savedTasksDate = localStorage.getItem('360R_todayTasksDate');
+        
+        if (savedTasksDate === state.currentDateStr && savedTasks) {
+            try {
+                state.todaySelection = JSON.parse(savedTasks);
+                DOM.taskLectures.checked = state.todaySelection.lecture;
+                DOM.taskQuestions.checked = state.todaySelection.question;
+                DOM.taskRevision.checked = state.todaySelection.revision;
+            } catch(e) { state.todaySelection = { lecture: false, question: false, revision: false }; }
+        } else {
+            localStorage.setItem('360R_todayTasksDate', state.currentDateStr);
+            saveWorkingTasksState();
+        }
+        if (state.attendanceHistory[state.currentDateStr]) { lockInputsOnFinalizedState(); }
+    }
 
-.card { padding: 1.5rem; border-radius: 16px; position: relative; }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; }
-.card-title { font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: #f1f5f9; }
-.card-desc { font-size: 0.775rem; color: var(--text-muted); margin-bottom: 1.25rem; }
+    function migrateOldSchemaData() {
+        let changed = false;
+        Object.keys(state.attendanceHistory).forEach(key => {
+            if (typeof state.attendanceHistory[key] === 'string') {
+                const statusVal = state.attendanceHistory[key];
+                state.attendanceHistory[key] = {
+                    status: statusVal,
+                    lecture: statusVal === 'Present',
+                    question: statusVal === 'Present',
+                    revision: statusVal === 'Present',
+                    note: ""
+                };
+                changed = true;
+            }
+        });
+        if (changed) localStorage.setItem('360R_attendanceHistory', JSON.stringify(state.attendanceHistory));
+    }
 
-.badge { font-size: 0.65rem; font-weight: 700; background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.15); }
+    function saveWorkingTasksState() { 
+        localStorage.setItem('360R_todayTasks', JSON.stringify(state.todaySelection)); 
+    }
 
-/* TASKS ROWS STRUCT */
-.tasks-wrapper { display: flex; flex-direction: column; gap: 0.75rem; }
-.task-row { display: flex; align-items: center; padding: 0.85rem 1rem; border-radius: 12px; background: rgba(255, 255, 255, 0.015); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s ease; position: relative; }
-.task-row:hover { background: rgba(255, 255, 255, 0.03); border-color: var(--border-hover); }
+    function syncDataToCloudEngine() {
+        if (!isCloudActive || !state.currentUser) return;
+        const targetRef = ref(database, 'users/' + state.currentUser.uid + '/attendanceHistory');
+        set(targetRef, state.attendanceHistory)
+            .catch(err => console.error("Cloud synchronization database error:", err));
+    }
 
-.real-checkbox { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
-.custom-checkbox { position: relative; height: 18px; width: 18px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; margin-right: 0.85rem; flex-shrink: 0; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; }
-.task-row:hover .custom-checkbox { border-color: rgba(255,255,255,0.3); }
+    function setupFirebaseObserver() {
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                state.currentUser = user;
+                DOM.userDisplayEmail.textContent = user.email || "Sync Account Attached";
+                DOM.authTriggerText.textContent = "Synced";
+                DOM.authModalTrigger.classList.add('cloud-active');
+                DOM.cloudIconIndicator.className = "fa-solid fa-cloud-check text-success";
+                
+                DOM.authLoggedOut.classList.add('hidden');
+                DOM.authLoggedIn.classList.remove('hidden');
+                
+                const userRecordRef = ref(database, 'users/' + user.uid + '/attendanceHistory');
+                onValue(userRecordRef, (snapshot) => {
+                    const cloudData = snapshot.val();
+                    if (cloudData) {
+                        state.attendanceHistory = cloudData;
+                        localStorage.setItem('360R_attendanceHistory', JSON.stringify(state.attendanceHistory));
+                        if (state.attendanceHistory[state.currentDateStr]) { lockInputsOnFinalizedState(); } else { unlockInputsFromFinalizedState(); loadLocalStorageData(); }
+                        refreshUIVisuals();
+                    } else {
+                        if (Object.keys(state.attendanceHistory).length > 0) syncDataToCloudEngine();
+                    }
+                });
+            } else {
+                state.currentUser = null;
+                DOM.authTriggerText.textContent = "Cloud Sync";
+                DOM.authModalTrigger.classList.remove('cloud-active');
+                DOM.cloudIconIndicator.className = "fa-solid fa-cloud animate-pulse";
+                DOM.authLoggedOut.classList.remove('hidden');
+                DOM.authLoggedIn.classList.add('hidden');
+            }
+        });
+    }
 
-.real-checkbox:checked ~ .custom-checkbox { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
-.real-checkbox:checked ~ .custom-checkbox::after { content: "\f00c"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 0.65rem; color: #fff; }
-.task-text { font-size: 0.875rem; font-weight: 500; color: #e2e8f0; transition: color 0.2s ease; }
-.real-checkbox:checked ~ .task-text { color: var(--text-muted); text-decoration: line-through; decoration-color: rgba(255,255,255,0.2); }
+    function bindAuthEventListeners() {
+        // Sliding Form Interactive Toggles
+        const loginText = document.querySelector(".title-text .login");
+        const loginForm = document.querySelector("form.login");
+        const loginBtn = document.querySelector("label.login");
+        const signupBtn = document.querySelector("label.signup");
+        const signupLink = document.querySelector("#go-to-signup");
+        const loginRadio = document.querySelector("#login");
+        const signupRadio = document.querySelector("#signup");
 
-.tasks-disabled { opacity: 0.65; cursor: not-allowed !important; pointer-events: none; }
+        if (signupBtn && loginBtn && loginForm && loginText) {
+            signupBtn.onclick = () => {
+                loginForm.style.marginLeft = "-50%";
+                loginText.style.marginLeft = "-50%";
+                signupRadio.checked = true;
+            };
+            loginBtn.onclick = () => {
+                loginForm.style.marginLeft = "0%";
+                loginText.style.marginLeft = "0%";
+                loginRadio.checked = true;
+            };
+            if (signupLink) {
+                signupLink.onclick = (e) => {
+                    e.preventDefault();
+                    signupBtn.click();
+                };
+            }
+        }
 
-/* DYNAMIC STATUS DISPLAY */
-#status-card { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-.status-inner { display: flex; flex-direction: column; }
-.status-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.status-value { font-size: 1.5rem; font-weight: 800; margin: 0.25rem 0 0.35rem 0; letter-spacing: -0.01em; }
-.status-subtext { font-size: 0.775rem; color: var(--text-muted); line-height: 1.4; }
+        // Firebase Auth Methods
+        DOM.btnLogin.onclick = (e) => {
+            e.preventDefault(); // Prevent page reload
+            const email = DOM.loginEmailInput.value.trim();
+            const password = DOM.loginPasswordInput.value;
+            if (!email || !password) return showToastMessage("Please enter email and password credentials.", "error");
+            
+            signInWithEmailAndPassword(auth, email, password)
+                .then(() => { showToastMessage("Authentication established. Sync active.", "success"); DOM.authModal.style.display = 'none'; })
+                .catch(err => showToastMessage(`Login Error: ${err.message}`, "error"));
+        };
 
-.status-absent { background: linear-gradient(to right, rgba(239, 68, 68, 0.04), transparent); border-left: 4px solid var(--failure) !important; }
-.status-absent .status-value { color: var(--failure); text-shadow: 0 0 15px var(--failure-glow); }
+        DOM.btnRegister.onclick = (e) => {
+            e.preventDefault(); // Prevent page reload
+            const email = DOM.signupEmailInput.value.trim();
+            const password = DOM.signupPasswordInput.value;
+            const confirm = DOM.signupConfirmInput.value;
+            
+            if (!email || !password || !confirm) return showToastMessage("Please fill out all registration fields.", "error");
+            if (password !== confirm) return showToastMessage("Passwords do not match!", "error");
 
-.status-present { background: linear-gradient(to right, rgba(34, 197, 94, 0.04), transparent); border-left: 4px solid var(--success) !important; }
-.status-present .status-value { color: var(--success); text-shadow: 0 0 15px var(--success-glow); }
+            createUserWithEmailAndPassword(auth, email, password)
+                .then(() => { showToastMessage("Account created successfully!", "success"); DOM.authModal.style.display = 'none'; })
+                .catch(err => showToastMessage(`Registration Error: ${err.message}`, "error"));
+        };
 
-/* TRANSACTION BUTTON STYLES */
-.btn-premium { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.85rem 1.5rem; border-radius: 12px; border: none; background: var(--accent); color: #fff; font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 12px var(--accent-glow); position: relative; overflow: hidden; }
-.btn-premium:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }
-.btn-premium:active { transform: translateY(0); }
-.btn-premium:disabled { background: rgba(255,255,255,0.04) !important; color: var(--text-muted) !important; border: 1px solid var(--border) !important; box-shadow: none !important; cursor: not-allowed; transform: none !important; }
+        DOM.btnGoogle.onclick = () => {
+            signInWithPopup(auth, googleProvider)
+                .then(() => { showToastMessage("Google profile linked successfully.", "success"); DOM.authModal.style.display = 'none'; })
+                .catch(err => showToastMessage(`Google Auth Exception: ${err.message}`, "error"));
+        };
 
-/* MOTIVATION CARD BOX */
-.quote-card { background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.005) 100%); overflow: hidden; }
-.quote-glow { position: absolute; right: -20px; top: -20px; width: 100px; height: 100px; background: var(--gold); filter: blur(45px); opacity: 0.08; pointer-events: none; }
-.quote-icon { font-size: 1.5rem; color: rgba(255,255,255,0.04); position: absolute; top: 1rem; left: 1rem; }
-.quote-text { font-size: 0.875rem; font-weight: 500; font-style: italic; color: #cbd5e1; line-height: 1.5; position: relative; z-index: 1; padding-left: 0.5rem; }
-.quote-author { display: block; font-size: 0.725rem; font-weight: 700; color: var(--text-muted); margin-top: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; padding-left: 0.5rem; }
+        DOM.btnLogout.onclick = () => {
+            signOut(auth).then(() => {
+                showToastMessage("Disconnected safely from cloud nodes.", "info");
+                DOM.authModal.style.display = 'none';
+                state.attendanceHistory = {};
+                localStorage.removeItem('360R_attendanceHistory');
+                unlockInputsFromFinalizedState();
+                refreshUIVisuals();
+            });
+        };
+    }
 
-/* METRICS STREAKS ARCHITECTURE */
-.streaks-container { display: flex; gap: 1rem; padding: 1.25rem; }
-.streak-box { flex: 1; display: flex; align-items: center; gap: 0.85rem; padding: 0.5rem; position: relative; }
-.streak-icon-wrap { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
+    function bindInputEventListeners() {
+        const handleCheckboxChange = () => {
+            state.todaySelection.lecture = DOM.taskLectures.checked;
+            state.todaySelection.question = DOM.taskQuestions.checked;
+            state.todaySelection.revision = DOM.taskRevision.checked;
+            saveWorkingTasksState();
+            evaluateTodayStatus();
+        };
+        DOM.taskLectures.addEventListener('change', handleCheckboxChange);
+        DOM.taskQuestions.addEventListener('change', handleCheckboxChange);
+        DOM.taskRevision.addEventListener('change', handleCheckboxChange);
+        DOM.finalizeBtn.addEventListener('click', finalizeTransactionEvent);
+    }
 
-.bg-flame { background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.15); }
-.text-orange { color: var(--orange); filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.3)); }
-.bg-trophy { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.15); }
-.text-gold { color: var(--gold); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.3)); }
+    function evaluateTodayStatus() {
+        const isPresent = state.todaySelection.lecture && state.todaySelection.question && state.todaySelection.revision;
+        if (isPresent) {
+            DOM.statusCard.className = "card glass status-present";
+            DOM.statusDisplay.textContent = "Present Today";
+            DOM.statusSubtext.textContent = "Optimal target loop achieved! Finalize to seal metric trajectory.";
+        } else {
+            DOM.statusCard.className = "card glass status-absent";
+            DOM.statusDisplay.textContent = "Absent Today";
+            DOM.statusSubtext.textContent = "Complete remaining core targets to flip status to Present.";
+        }
+        
+        if (state.attendanceHistory[state.currentDateStr]) {
+            const absoluteStatus = state.attendanceHistory[state.currentDateStr].status;
+            DOM.statusCard.className = `card glass status-${absoluteStatus.toLowerCase()}`;
+            DOM.statusDisplay.textContent = `${absoluteStatus} (Finalized)`;
+            DOM.statusSubtext.textContent = "This track sequence is securely committed to your ledger history.";
+        }
+    }
 
-.streak-info { display: flex; flex-direction: column; }
-.streak-label { font-size: 0.725rem; font-weight: 600; color: var(--text-muted); }
-.streak-val { font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin-top: 0.05rem; }
+    function finalizeTransactionEvent() {
+        if (state.attendanceHistory[state.currentDateStr]) return;
+        const calculatedStatus = (state.todaySelection.lecture && state.todaySelection.question && state.todaySelection.revision) ? "Present" : "Absent";
+        
+        state.attendanceHistory[state.currentDateStr] = {
+            status: calculatedStatus,
+            lecture: state.todaySelection.lecture,
+            question: state.todaySelection.question,
+            revision: state.todaySelection.revision,
+            note: ""
+        };
+        
+        localStorage.setItem('360R_attendanceHistory', JSON.stringify(state.attendanceHistory));
+        syncDataToCloudEngine();
+        
+        lockInputsOnFinalizedState();
+        refreshUIVisuals();
+        
+        if (calculatedStatus === "Present") {
+            confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#3b82f6', '#22c55e', '#ffffff'] });
+            showToastMessage("Target Locked: Excellent execution trajectory!", "success");
+        } else { 
+            showToastMessage("Record Filed: Absent day logged.", "info"); 
+        }
+    }
 
-.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.mini-stat-card { padding: 1rem 1.25rem; border-radius: 12px; display: flex; flex-direction: column; gap: 0.15rem; background: rgba(0,0,0,0.15); }
-.stat-lbl { font-size: 0.725rem; font-weight: 600; color: var(--text-muted); }
-.stat-num { font-size: 1.5rem; font-weight: 800; }
-.border-success { border-left: 3px solid var(--success); }
-.text-success { color: var(--success); }
-.border-failure { border-left: 3px solid var(--failure); }
-.text-failure { color: var(--failure); }
+    function lockInputsOnFinalizedState() {
+        DOM.taskLectures.disabled = true; DOM.taskQuestions.disabled = true; DOM.taskRevision.disabled = true;
+        DOM.taskLectures.parentElement.classList.add('tasks-disabled');
+        DOM.taskQuestions.parentElement.classList.add('tasks-disabled');
+        DOM.taskRevision.parentElement.classList.add('tasks-disabled');
+        DOM.finalizeBtn.disabled = true;
+        DOM.finalizeBtn.innerHTML = '<span>Day Sequence Finalized</span> <i class="fa-solid fa-check-double"></i>';
+    }
 
-/* ANALYTICS CHARTS ELEMENT CONTEXT */
-.analytics-charts-box { display: flex; flex-direction: column; }
-.charts-flex-wrapper { display: flex; gap: 1rem; align-items: center; height: 160px; margin-top: 0.5rem; }
-.chart-container-half { flex: 1; position: relative; height: 100%; max-width: 50%; }
+    function unlockInputsFromFinalizedState() {
+        DOM.taskLectures.disabled = false; DOM.taskQuestions.disabled = false; DOM.taskRevision.disabled = false;
+        DOM.taskLectures.checked = false; DOM.taskQuestions.checked = false; DOM.taskRevision.checked = false;
+        state.todaySelection = { lecture: false, question: false, revision: false };
+        saveWorkingTasksState();
+        DOM.taskLectures.parentElement.classList.remove('tasks-disabled');
+        DOM.taskQuestions.parentElement.classList.remove('tasks-disabled');
+        DOM.taskRevision.parentElement.classList.remove('tasks-disabled');
+        DOM.finalizeBtn.disabled = false;
+        DOM.finalizeBtn.innerHTML = '<span>Finalize Today</span> <i class="fa-solid fa-bolt"></i>';
+    }
 
-/* HEATMAP BLOCK FRAMEWORK */
-.heatmap-section { margin-top: 0.25rem; }
-.grid-full { width: 100%; }
-.flex-header-wrap { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.25rem; }
-.flex-header-wrap .card-desc { margin-bottom: 0; margin-top: 0.15rem; }
+    function refreshUIVisuals() {
+        evaluateTodayStatus();
+        calculateMetricsAndStreaks();
+        renderHeatmapGraph();
+        renderAnalyticsCharts();
+    }
 
-.heatmap-legend { display: flex; align-items: center; gap: 0.85rem; font-size: 0.725rem; color: var(--text-muted); font-weight: 600; background: rgba(255,255,255,0.02); padding: 0.4rem 0.75rem; border-radius: 8px; border: 1px solid var(--border); }
-.legend-item { display: flex; align-items: center; gap: 0.35rem; }
-.legend-sq { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    function calculateMetricsAndStreaks() {
+        const records = Object.keys(state.attendanceHistory).sort();
+        let presentCount = 0, absentCount = 0;
+        records.forEach(dateKey => { 
+            if (state.attendanceHistory[dateKey].status === "Present") presentCount++; else if (state.attendanceHistory[dateKey].status === "Absent") absentCount++; 
+        });
+        DOM.statPresentCount.textContent = presentCount; DOM.statAbsentCount.textContent = absentCount;
 
-.heatmap-scroll-area { overflow-x: auto; width: 100%; padding-bottom: 0.5rem; cursor: grab; }
-.heatmap-scroll-area::-webkit-scrollbar { height: 5px; }
-.heatmap-scroll-area::-webkit-scrollbar-track { background: rgba(255,255,255,0.01); border-radius: 10px; }
-.heatmap-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+        let maxStreak = 0, tempStreak = 0;
+        const chronologicalKeys = [...records].sort((a,b) => new Date(a) - new Date(b));
+        chronologicalKeys.forEach(key => {
+            if (state.attendanceHistory[key].status === "Present") { 
+                tempStreak++; 
+                if (tempStreak > maxStreak) maxStreak = tempStreak; 
+            } else if (state.attendanceHistory[key].status === "Absent") { tempStreak = 0; }
+        });
 
-.heatmap-grid-inner { display: grid; grid-flow: column; grid-template-rows: repeat(7, 11px); gap: 4.5px; width: max-content; padding: 0.25rem 0; }
-.heatmap-day { width: 11px; height: 11px; border-radius: 2px.5; transition: transform 0.1s ease, border-color 0.1s ease; cursor: pointer; border: 1px solid transparent; }
-.heatmap-day:hover { transform: scale(1.22); border-color: rgba(255,255,255,0.3); z-index: 2; }
+        let currentStreak = 0;
+        let evaluationTargetStr = state.currentDateStr;
+        let matchingStreakLinkFound = true;
+        if (!state.attendanceHistory[evaluationTargetStr]) {
+            const yesterdayDateObj = new Date(); yesterdayDateObj.setDate(yesterdayDateObj.getDate() - 1);
+            evaluationTargetStr = formatDateToISO(yesterdayDateObj);
+        }
+        while (matchingStreakLinkFound) {
+            if (state.attendanceHistory[evaluationTargetStr] && state.attendanceHistory[evaluationTargetStr].status === "Present") {
+                currentStreak++;
+                const prev = new Date(evaluationTargetStr); prev.setDate(prev.getDate() - 1);
+                evaluationTargetStr = formatDateToISO(prev);
+            } else { matchingStreakLinkFound = false; }
+        }
+        DOM.currentStreak.textContent = `${currentStreak} Day${currentStreak === 1 ? '' : 's'}`;
+        DOM.longestStreak.textContent = `${maxStreak} Day${maxStreak === 1 ? '' : 's'}`;
+    }
 
-.bg-empty { background-color: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255,255,255,0.01); }
-.bg-present { background-color: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.15); }
-.bg-absent { background-color: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.15); }
+    function renderHeatmapGraph() {
+        DOM.heatmapGrid.innerHTML = "";
+        const startDate = new Date(2026, 5, 8); 
+        const endDate = new Date(2027, 0, 1);   
+        let iterDate = new Date(startDate);
+        while (iterDate <= endDate) {
+            const dateStrKey = formatDateToISO(iterDate);
+            const squareNode = document.createElement('div');
+            squareNode.classList.add('heatmap-day');
+            
+            const rec = state.attendanceHistory[dateStrKey];
+            if (rec && rec.status === "Present") squareNode.classList.add('present');
+            else if (rec && rec.status === "Absent") squareNode.classList.add('absent');
+            
+            const dateOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+            squareNode.setAttribute('title', `${iterDate.toLocaleDateString('en-US', dateOptions)} : ${rec ? rec.status : "No Data"}`);
+            
+            squareNode.addEventListener('click', () => {
+                const clickTargetDate = new Date(dateStrKey);
+                state.calendar.month = clickTargetDate.getMonth();
+                state.calendar.year = clickTargetDate.getFullYear();
+                DOM.calendarModal.style.display = 'flex';
+                renderInteractiveCalendarGrid();
+                triggerCalendarDaySelection(dateStrKey);
+            });
 
-/* CUSTOM NOTIFICATION TOAST ENGINE */
-.toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 9999; pointer-events: none; }
-.toast { background: rgba(15, 23, 42, 0.9); border: 1px solid var(--border-hover); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #f1f5f9; padding: 0.75rem 1.15rem; border-radius: 10px; font-size: 0.8rem; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 0.65rem; transform: translateY(15px); opacity: 0; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); pointer-events: auto; border-left: 3px solid var(--accent); }
-.toast.show { transform: translateY(0); opacity: 1; }
+            DOM.heatmapGrid.appendChild(squareNode);
+            iterDate.setDate(iterDate.getDate() + 1);
+        }
+    }
 
-/* MODALS HOUSING LAYER SPECIFICATION */
-.custom-modal { position: fixed; inset: 0; background: rgba(7, 10, 19, 0.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 999; padding: 1rem; }
-.modal-panel { width: 100%; max-width: 390px; border-radius: 20px; padding: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border: 1px solid rgba(255,255,255,0.08); background: rgba(17, 24, 39, 0.85); }
+    function renderAnalyticsCharts() {
+        if (state.charts.bar) state.charts.bar.destroy();
+        if (state.charts.pie) state.charts.pie.destroy();
+        
+        const monthlyAggregationData = compileMonthlyPerformanceArrays();
+        const textMutedColor = '#94a3b8'; const gridBorderColor = 'rgba(255, 255, 255, 0.05)';
+        
+        state.charts.bar = new Chart(DOM.barChartCanvas, {
+            type: 'bar',
+            data: { labels: monthlyAggregationData.labels, datasets: [{ label: 'Yield %', data: monthlyAggregationData.values, backgroundColor: '#3b82f6', borderRadius: 4, barThickness: 12 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                scales: { x: { grid: { display: false }, ticks: { color: textMutedColor, font: { size: 10 } } }, y: { grid: { color: gridBorderColor }, min: 0, max: 100, ticks: { color: textMutedColor, font: { size: 9 }, stepSize: 25 } } }
+            }
+        });
 
-.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.15rem; }
-.modal-head h3 { font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: #f8fafc; }
-.modal-close-btn { background: rgba(255,255,255,0.03); border: 1px solid var(--border); width: 28px; height: 28px; border-radius: 8px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; transition: all 0.2s ease; }
-.modal-close-btn:hover { background: rgba(255,255,255,0.08); color: #fff; border-color: var(--border-hover); }
+        const currentPresentCount = parseInt(DOM.statPresentCount.textContent) || 0;
+        const currentAbsentCount = parseInt(DOM.statAbsentCount.textContent) || 0;
+        const fallbackEmptyDatasetTrigger = (currentPresentCount === 0 && currentAbsentCount === 0);
+        
+        state.charts.pie = new Chart(DOM.pieChartCanvas, {
+            type: 'pie',
+            data: { labels: fallbackEmptyDatasetTrigger ? ['No Logs'] : ['Present', 'Absent'], datasets: [{ data: fallbackEmptyDatasetTrigger ? [1] : [currentPresentCount, currentAbsentCount], backgroundColor: fallbackEmptyDatasetTrigger ? ['rgba(255,255,255,0.05)'] : ['#22c55e', '#ef4444'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textMutedColor, font: { size: 11 } } } } }
+        });
+    }
 
-.modal-desc { font-size: 0.775rem; color: var(--text-muted); line-height: 1.45; margin-bottom: 1rem; }
-.modal-desc.centered { text-align: center; }
+    function compileMonthlyPerformanceArrays() {
+        const monthNamesList = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const outputPayload = { labels: [], values: [] }; const currentAnchorDate = new Date();
+        for (let idx = 5; idx >= 0; idx--) {
+            const evalMonthTarget = new Date(currentAnchorDate.getFullYear(), currentAnchorDate.getMonth() - idx, 1);
+            const trackingYearNum = evalMonthTarget.getFullYear(); const trackingMonthNum = evalMonthTarget.getMonth();
+            let targetPresentCount = 0, targetTotalCount = 0;
+            Object.keys(state.attendanceHistory).forEach(dateKey => {
+                const parts = dateKey.split('-');
+                if (parseInt(parts[0]) === trackingYearNum && (parseInt(parts[1]) - 1) === trackingMonthNum) { 
+                    if(state.attendanceHistory[dateKey]?.status) {
+                        targetTotalCount++; 
+                        if (state.attendanceHistory[dateKey].status === "Present") targetPresentCount++; 
+                    }
+                }
+            });
+            outputPayload.labels.push(`${monthNamesList[trackingMonthNum]}`);
+            outputPayload.values.push(targetTotalCount > 0 ? Math.round((targetPresentCount / targetTotalCount) * 100) : 0);
+        }
+        return outputPayload;
+    }
 
-/* MODAL INTERACTIVE INPUT DOMAIN SETUP */
-.auth-input-group { display: flex; flex-direction: column; gap: 0.45rem; }
-.input-with-icon { position: relative; display: flex; align-items: center; }
-.input-with-icon i { position: absolute; left: 1rem; color: var(--text-muted); font-size: 0.85rem; pointer-events: none; transition: color 0.2s; }
-.auth-input { width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; border-radius: 10px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); color: #fff; font-size: 0.85rem; font-weight: 500; outline: none; transition: all 0.2s ease; }
-.auth-input:focus { border-color: var(--accent); background: rgba(0,0,0,0.3); box-shadow: 0 0 10px var(--accent-glow); }
-.auth-input:focus ~ i { color: var(--accent); }
+    function displayDailyQuote() {
+        let hash = 0; for (let i = 0; i < state.currentDateStr.length; i++) { hash = state.currentDateStr.charCodeAt(i) + ((hash << 5) - hash); }
+        DOM.motivationQuote.textContent = `"${motivationalQuotes[Math.abs(hash) % motivationalQuotes.length]}"`;
+    }
 
-.auth-main-btn { width: 100%; padding: 0.75rem; font-size: 0.85rem; border-radius: 10px; }
-.modal-divider { display: flex; align-items: center; text-align: center; color: rgba(255,255,255,0.15); font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 1.25rem 0; }
-.modal-divider::before, .modal-divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.modal-divider:not(:empty)::before { margin-right: .75em; }
-.modal-divider:not(:empty)::after { margin-left: .75em; }
+    function checkMidnightRollover() {
+        setInterval(() => {
+            const now = new Date(); const currentSystemCheckDateStr = formatDateToISO(now);
+            if (currentSystemCheckDateStr !== state.currentDateStr) window.location.reload();
+        }, 30000);
+    }
 
-.btn-google-auth { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.7rem 1rem; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: #e2e8f0; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
-.btn-google-auth:hover { background: rgba(255,255,255,0.06); border-color: var(--border-hover); color: #fff; }
+    function formatDateToISO(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
+    
+    function showToastMessage(message, type = "info") {
+        const element = document.createElement('div'); 
+        element.classList.add('toast', type);
+        let icon = "fa-circle-info";
+        if(type === "success") icon = "fa-circle-check";
+        if(type === "error") icon = "fa-circle-exclamation";
+        
+        element.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+        DOM.toastContainer.appendChild(element);
+        
+        setTimeout(() => { 
+            element.style.opacity = '0';
+            element.style.transform = 'translateY(10px)';
+            setTimeout(() => element.remove(), 300); 
+        }, 4000);
+    }
 
-.btn-auth-trigger { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.9rem; border-radius: 10px; font-size: 0.825rem; font-weight: 600; color: #e2e8f0; cursor: pointer; background: rgba(255,255,255,0.01); }
-.btn-auth-trigger:hover { background: rgba(255,255,255,0.03); }
-.cloud-active { border-color: rgba(34, 197, 94, 0.25) !important; background: linear-gradient(to bottom, rgba(34, 197, 94, 0.02), transparent); }
-.cloud-active:hover { border-color: rgba(34, 197, 94, 0.4) !important; }
+    function setupInteractiveModalPanels() {
+        DOM.calendarTrigger.onclick = () => {
+            DOM.calendarModal.style.display = 'flex';
+            renderInteractiveCalendarGrid();
+        };
+        DOM.closeCalendarModal.onclick = () => { DOM.calendarModal.style.display = 'none'; };
+        DOM.calendarModal.onclick = (e) => { if (e.target === DOM.calendarModal) DOM.calendarModal.style.display = 'none'; };
 
-/* AUTH CONFIGURATION SIGNED IN SYNC GRAPH */
-.cloud-status-success { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.25rem; background: rgba(34, 197, 94, 0.02); border: 1px solid rgba(34, 197, 94, 0.1); border-radius: 14px; text-align: center; margin-bottom: 1rem; }
-.cloud-status-success i { font-size: 2rem; margin-bottom: 0.5rem; filter: drop-shadow(0 0 8px var(--success-glow)); }
-.cloud-status-success h4 { font-size: 0.9rem; font-weight: 700; color: #f8fafc; }
-.cloud-status-success p { font-size: 0.775rem; color: var(--text-muted); margin-top: 0.15rem; }
-.danger-btn { background: #ef4444 !important; box-shadow: 0 4px 12px var(--failure-glow) !important; width: 100%; margin-top: 1.25rem; font-size: 0.85rem; padding: 0.75rem; border-radius: 10px; }
-.danger-btn:hover { background: #dc2626 !important; box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4) !important; }
+        DOM.authModalTrigger.onclick = () => { DOM.authModal.style.display = 'flex'; };
+        DOM.closeAuthModal.onclick = () => { DOM.authModal.style.display = 'none'; };
+        DOM.authModal.onclick = (e) => { if (e.target === DOM.authModal) DOM.authModal.style.display = 'none'; };
 
-/* CALENDAR ARCHITECTURE LAYOUT GRID */
-.calendar-nav-wrap { display: flex; align-items: center; gap: 0.85rem; }
-.calendar-nav-wrap h3 { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; min-width: 100px; text-align: center; }
-.cal-nav-btn { background: rgba(255,255,255,0.02); border: 1px solid var(--border); width: 26px; height: 26px; border-radius: 6px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; transition: all 0.2s ease; }
-.cal-nav-btn:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        DOM.prevMonthBtn.onclick = () => {
+            if (state.calendar.year === 2026 && state.calendar.month === 5) return;
+            state.calendar.month--;
+            if (state.calendar.month < 0) { state.calendar.month = 11; state.calendar.year--; }
+            renderInteractiveCalendarGrid();
+        };
 
-.calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; margin-bottom: 0.5rem; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-#calendar-grid-ui { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-.cal-day { aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; color: #cbd5e1; cursor: pointer; transition: all 0.15s ease; padding: 0.15rem 0; position: relative; }
-.cal-day:hover { background: rgba(255,255,255,0.04); border-color: var(--border-hover); color: #fff; transform: translateY(-1px); }
-.cal-day small { font-size: 0.55rem; line-height: 1; margin-top: -0.05rem; }
-.cal-selected { background: rgba(59, 130, 246, 0.08) !important; border-color: var(--accent) !important; color: #fff !important; font-weight: 700; box-shadow: 0 0 10px rgba(59, 130, 246, 0.15); }
+        DOM.nextMonthBtn.onclick = () => {
+            if (state.calendar.year === 2027 && state.calendar.month === 0) return;
+            state.calendar.month++;
+            if (state.calendar.month > 11) { state.calendar.month = 0; state.calendar.year++; }
+            renderInteractiveCalendarGrid();
+        };
+    }
 
-/* CALENDAR SPECIFIC METRIC CHIPS */
-.calendar-details { margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1.15rem; display: flex; flex-direction: column; gap: 0.55rem; }
-.calendar-details h4 { font-size: 0.85rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.15rem; }
-.status-chip { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.675rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; width: max-content; margin-bottom: 0.25rem; }
-.status-chip.ok { background: rgba(34, 197, 94, 0.1); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.2); }
-.status-chip.bad { background: rgba(239, 68, 68, 0.1); color: var(--failure); border: 1px solid rgba(239, 68, 68, 0.2); }
+    function renderInteractiveCalendarGrid() {
+        DOM.calendarMonthLbl.textContent = new Date(state.calendar.year, state.calendar.month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        DOM.calendarGrid.innerHTML = '';
+        
+        const firstDayIndex = new Date(state.calendar.year, state.calendar.month, 1).getDay();
+        const totalDaysInMonth = new Date(state.calendar.year, state.calendar.month + 1, 0).getDate();
+        
+        for (let i = 0; i < firstDayIndex; i++) {
+            let blankCell = document.createElement('div');
+            blankCell.className = "cal-day empty";
+            DOM.calendarGrid.appendChild(blankCell);
+        }
+        
+        for (let d = 1; d <= totalDaysInMonth; d++) {
+            const dateKey = `${state.calendar.year}-${String(state.calendar.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const cellNode = document.createElement('div');
+            cellNode.className = 'cal-day';
+            cellNode.textContent = d;
+            
+            const record = state.attendanceHistory[dateKey];
+            if (record) {
+                if(record.status === 'Present') cellNode.classList.add('cal-present');
+                if(record.status === 'Absent') cellNode.classList.add('cal-absent');
+            }
+            
+            if(dateKey === state.currentDateStr) {
+                cellNode.classList.add('cal-today');
+            }
+            
+            cellNode.onclick = () => {
+                document.querySelectorAll('.cal-day').forEach(x => {
+                    x.style.boxShadow = 'none';
+                    x.style.transform = 'scale(1)';
+                });
+                cellNode.style.boxShadow = 'inset 0 0 0 2px #fff';
+                cellNode.style.transform = 'scale(1.05)';
+                triggerCalendarDaySelection(dateKey);
+            };
+            
+            DOM.calendarGrid.appendChild(cellNode);
+        }
+    }
 
-.task-chip { display: flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.65rem; border-radius: 8px; font-size: 0.775rem; font-weight: 500; background: rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.02); }
-.task-chip.task-ok i { color: var(--success); }
-.task-chip.task-bad i { color: var(--text-muted); opacity: 0.4; }
-.task-chip.task-unknown i { color: var(--gold); }
+    function triggerCalendarDaySelection(key) {
+        const record = state.attendanceHistory[key];
+        const dateObj = new Date(key);
+        const cleanDisplayTitle = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        
+        const formatRowMarkup = (targetName, stateValue) => {
+            if (stateValue === true) return `<div class="inspect-item"><i class="fa-solid fa-circle-check"></i> <span>Complete: ${targetName}</span></div>`;
+            if (stateValue === false) return `<div class="inspect-item"><i class="fa-solid fa-circle-xmark"></i> <span>Incomplete: ${targetName}</span></div>`;
+            return `<div class="inspect-item"><i class="fa-solid fa-circle-xmark" style="opacity:0.2"></i> <span>Unrecorded: ${targetName}</span></div>`;
+        };
 
-.note-box { width: 100%; min-height: 65px; max-height: 120px; resize: vertical; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); padding: 0.55rem 0.65rem; color: #e2e8f0; font-size: 0.775rem; line-height: 1.45; outline: none; margin-top: 0.25rem; font-weight: 500; }
-.note-box:focus { border-color: rgba(255,255,255,0.15); background: rgba(0,0,0,0.25); }
-.note-box::placeholder { color: rgba(255,255,255,0.2); }
-.empty-details-notice { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; text-align: center; color: var(--text-muted); gap: 0.45rem; opacity: 0.7; }
-.empty-details-notice i { font-size: 1.25rem; color: var(--accent); }
-.empty-details-notice p { font-size: 0.775rem; font-weight: 500; }
+        if (!record) {
+            DOM.calendarDetails.innerHTML = `
+                <div class="inspect-title"><span>${cleanDisplayTitle}</span> <span class="inspect-badge" style="background:rgba(255,255,255,0.1);color:#94a3b8;">NO LOG</span></div>
+                <div class="inspect-items-list">
+                    ${formatRowMarkup('Watch 3 Lectures', null)}
+                    ${formatRowMarkup('Solve 60 Questions', null)}
+                    ${formatRowMarkup('Revision Completed', null)}
+                </div>
+                <textarea id="modalNoteArea" class="note-box" readonly placeholder="No track snapshots saved for future targets."></textarea>
+            `;
+        } else {
+            const badgeStyle = record.status === 'Present' ? 'background:rgba(34,197,94,0.2);color:#4ade80;' : 'background:rgba(239,68,68,0.2);color:#f87171;';
+            DOM.calendarDetails.innerHTML = `
+                <div class="inspect-title"><span>${cleanDisplayTitle}</span> <span class="inspect-badge" style="${badgeStyle}">${record.status.toUpperCase()}</span></div>
+                <div class="inspect-items-list">
+                    ${formatRowMarkup('Watch 3 Lectures', record.lecture)}
+                    ${formatRowMarkup('Solve 60 Questions', record.question)}
+                    ${formatRowMarkup('Revision Completed', record.revision)}
+                </div>
+                <textarea id="modalNoteArea" class="note-box" placeholder="Write workspace analysis logs / formulas / error notes here...">${record.note || ''}</textarea>
+            `;
+            
+            const textareaNode = document.getElementById('modalNoteArea');
+            textareaNode.oninput = () => {
+                if (state.attendanceHistory[key]) {
+                    state.attendanceHistory[key].note = textareaNode.value;
+                    localStorage.setItem('360R_attendanceHistory', JSON.stringify(state.attendanceHistory));
+                    syncDataToCloudEngine();
+                }
+            };
+        }
+    }
 
-/* REUSABLE ANIMATION ENGINE UTILITIES */
-.animate-fade-in { animation: fadeIn 0.5s ease forwards; }
-.animate-slide-up { opacity: 0; animation: slideUp 0.7s ease forwards; }
-.animate-scale-up { animation: scaleUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-.delay-1 { animation-delay: 0.15s; }
-.delay-2 { animation-delay: 0.3s; }
+    function setupHeatmapTooltips() {
+        const tooltipEl = document.createElement('div');
+        tooltipEl.className = 'custom-tooltip';
+        document.body.appendChild(tooltipEl);
+        
+        document.addEventListener('mouseover', (e) => {
+            const block = e.target.closest('.heatmap-day');
+            if (block && block.getAttribute('title')) {
+                tooltipEl.innerHTML = block.getAttribute('title');
+                tooltipEl.style.display = 'block';
+            }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            tooltipEl.style.left = (e.pageX + 12) + 'px';
+            tooltipEl.style.top = (e.pageY + 12) + 'px';
+        });
+        
+        document.addEventListener('mouseout', (e) => {
+            if (e.target.closest('.heatmap-day')) tooltipEl.style.display = 'none';
+        });
+    }
 
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyfram
+    init();
+});
