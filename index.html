@@ -159,65 +159,58 @@
     <div id="auth-modal" class="custom-modal">
         <div class="modal-panel glass animate-scale-up">
             <div class="modal-head">
-                <h3 id="modal-auth-title"><i class="fa-solid fa-cloud-arrow-up text-accent"></i> Core Cloud Engine</h3>
+                <h3><i class="fa-solid fa-cloud-arrow-up text-accent"></i> Core Cloud Engine</h3>
                 <button id="close-auth-modal" class="modal-close-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             
             <div id="auth-logged-out" class="auth-modal-content">
-                <p class="modal-desc">Connect a sync account to back up streaks and secure cross-device consistency records seamlessly.</p>
-                
-                <div class="auth-slider-wrapper">
-                    <div class="slide-controls">
-                        <input type="radio" name="slide" id="login-slide" checked>
-                        <input type="radio" name="slide" id="signup-slide">
-                        <label for="login-slide" class="slide login-label">Login</label>
-                        <label for="signup-slide" class="slide signup-label">Signup</label>
-                        <div class="slider-tab"></div>
+                <div class="slide-wrapper">
+                    <div class="title-text">
+                        <div class="title login">Login Form</div>
+                        <div class="title signup">Signup Form</div>
                     </div>
-
                     <div class="form-container">
+                        <div class="slide-controls">
+                            <input type="radio" name="slide" id="login" checked>
+                            <input type="radio" name="slide" id="signup">
+                            <label for="login" class="slide login">Login</label>
+                            <label for="signup" class="slide signup">Signup</label>
+                            <div class="slider-tab"></div>
+                        </div>
                         <div class="form-inner">
-                            <form action="#" class="slide-form login" onsubmit="event.preventDefault();">
-                                <div class="auth-input-group mt-3">
-                                    <div class="input-with-icon">
-                                        <i class="fa-solid fa-envelope"></i>
-                                        <input type="email" id="login-email" placeholder="Email Address" required class="auth-input">
-                                    </div>
+                            <form action="#" class="login">
+                                <div class="field">
+                                    <input type="email" id="auth-email" placeholder="Email Address" required>
                                 </div>
-                                <div class="auth-input-group mt-3">
-                                    <div class="input-with-icon">
-                                        <i class="fa-solid fa-lock"></i>
-                                        <input type="password" id="login-password" placeholder="Password" required class="auth-input">
-                                    </div>
+                                <div class="field">
+                                    <input type="password" id="auth-password" placeholder="Password" required>
                                 </div>
                                 <div class="pass-link"><a href="#">Forgot password?</a></div>
-                                <button type="submit" id="btn-submit-login" class="btn-premium auth-main-btn mt-4"><span>Sign In</span><i class="fa-solid fa-right-to-bracket"></i></button>
+                                <div class="field btn">
+                                    <div class="btn-layer"></div>
+                                    <input type="submit" id="btn-login" value="Login">
+                                </div>
+                                <div class="signup-link">Not a member? <a href="#" id="go-to-signup">Signup now</a></div>
                             </form>
-                            
-                            <form action="#" class="slide-form signup" onsubmit="event.preventDefault();">
-                                <div class="auth-input-group mt-3">
-                                    <div class="input-with-icon">
-                                        <i class="fa-solid fa-envelope"></i>
-                                        <input type="email" id="signup-email" placeholder="Email Address" required class="auth-input">
-                                    </div>
+                            <form action="#" class="signup">
+                                <div class="field">
+                                    <input type="email" id="auth-email-signup" placeholder="Email Address" required>
                                 </div>
-                                <div class="auth-input-group mt-3">
-                                    <div class="input-with-icon">
-                                        <i class="fa-solid fa-lock"></i>
-                                        <input type="password" id="signup-password" placeholder="Password" required class="auth-input">
-                                    </div>
+                                <div class="field">
+                                    <input type="password" id="auth-password-signup" placeholder="Password" required>
                                 </div>
-                                <div class="auth-input-group mt-3">
-                                    <div class="input-with-icon">
-                                        <i class="fa-solid fa-shield"></i>
-                                        <input type="password" id="signup-confirm" placeholder="Confirm password" required class="auth-input">
-                                    </div>
+                                <div class="field">
+                                    <input type="password" id="auth-confirm-password" placeholder="Confirm password" required>
                                 </div>
-                                <button type="submit" id="btn-submit-signup" class="btn-premium auth-main-btn mt-4"><span>Register Account</span><i class="fa-solid fa-user-plus"></i></button>
+                                <div class="field btn">
+                                    <div class="btn-layer"></div>
+                                    <input type="submit" id="btn-register" value="Signup">
+                                </div>
                             </form>
                         </div>
                     </div>
                 </div>
+
                 <div class="modal-divider"><span>or securely use</span></div>
 
                 <button id="btn-google" class="btn-google-auth">
@@ -268,5 +261,4 @@
 
     <script type="module" src="script.js"></script>
 </body>
-                          </html>
-                                                    
+</html>
